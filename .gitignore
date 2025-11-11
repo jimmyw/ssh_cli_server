@@ -1,7 +1,6 @@
 .cache/
 .devcontainer/
 .vscode/
-README.md
 build
 dependencies.lock
 managed_components
