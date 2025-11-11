@@ -1,6 +1,6 @@
 #include <stdint.h>
+#include <stdbool.h>
 #include "esp_err.h"
-
 
 typedef void (*ssh_shell_func_t)(void *ctx);
 

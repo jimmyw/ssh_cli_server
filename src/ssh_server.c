@@ -1,12 +1,4 @@
-/*
- * Simple SSH Server Example
- *
- * This is a minimal SSH server that:
- * - Listens on 0.0.0.0 (all interfaces)
- * - Accepts password authentication
- * - Provides a simple shell
- * - Uses the built libssh library
- */
+
 
 #include <ctype.h>
 #include <libssh/callbacks.h>
@@ -28,8 +20,6 @@
 
 #include "ssh_server.h"
 
-// Configuration (from Kconfig)
-#include "sdkconfig.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
@@ -174,7 +164,6 @@ bail_out:
     vTaskDelete(NULL);
 }
 
-// Callbacks
 /**
  * @brief SSH shell request callback
  *
