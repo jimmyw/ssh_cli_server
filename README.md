@@ -5,16 +5,48 @@
 
 This ESP-IDF component provides a complete SSH server implementation with an integrated command-line interface. It allows remote access to your ESP32 device over SSH, providing the same console commands that are available over UART/USB.
 
+## Why This Component?
+
+While there are many SSH server implementations available, **this component is specifically designed to provide a true CLI experience** that forwards stdin/stdout just like your local ESP32 console. Unlike basic SSH servers that might only provide file transfer or simple command execution, this implementation:
+
+- **Seamlessly integrates with ESP-IDF Console**: Access the exact same commands available on your local UART/USB console
+- **True bidirectional I/O**: Real-time stdin/stdout forwarding with proper terminal emulation
+- **Interactive shell experience**: Command history, tab completion, and line editing work exactly as expected
+- **Session persistence**: Maintains state and context throughout the SSH session
+- **Multiple concurrent sessions**: Each SSH connection gets its own isolated console environment
+
+This bridges the gap between remote access and local development, giving you the same powerful console experience whether you're connected via USB cable or SSH over WiFi.
+
 ## Features
 
 - **Full SSH Server**: Built on libssh library with support for key exchange, authentication, and encrypted communication
+- **True Console Integration**: Complete stdin/stdout forwarding that works exactly like your local ESP32 console
 - **Multiple Authentication Methods**:
   - Password authentication
   - Public key authentication
 - **Interactive Shell**: Complete command-line interface with history, tab completion, and line editing
+- **Session Tracking**: Real-time client information including IP, authentication method, and connection details
 - **VFS Integration**: Thread-safe communication between SSH sessions and ESP console
-- **Multi-channel Support**: Handle multiple concurrent SSH connections
+- **Multi-channel Support**: Handle multiple concurrent SSH connections with isolated environments
 - **Console Commands**: Access to all standard ESP-IDF console commands (WiFi, NVS, system info, etc.)
+- **Built-in Session Commands**:
+  - `session` - View current connection details
+  - `exit`/`quit` - Graceful session termination
+
+
+## Enhanced Shell Features
+
+For an even more powerful shell experience with advanced features like pipes, grep, and other UNIX-style utilities, consider applying this ESP-IDF enhancement:
+
+**ESP Shell Component Enhancement**: [ESP-IDF Pull Request #17793](https://github.com/espressif/esp-idf/pull/17793)
+
+This patch extends the ESP-IDF console component to provide:
+- **Pipe support**: Chain commands together (e.g., `help | grep wifi`)
+- **Text filtering**: Use `grep` to filter command output
+- **Enhanced command composition**: Build complex command pipelines
+- **Improved shell scripting**: More sophisticated command interactions
+
+When combined with this SSH server, you get a truly powerful remote shell environment that rivals traditional UNIX shells.
 
 ## Dependencies
 
@@ -150,16 +182,58 @@ SSH client session:
 ```
 $ ssh esp32@192.168.1.100
 esp32@192.168.1.100's password:
+
+=== SSH Session Information ===
+Client: 192.168.1.50:54321
+User: esp32
+Auth method: password
+Client version: SSH-2.0-OpenSSH_8.9
+Session ID: 1
+Connected at: 12345 seconds since boot
+===============================
+
 Welcome to ESP32 SSH Console
 esp32> help
-help  Print the list of registered commands
+help     Print the list of registered commands
+session  Show current SSH session information
+exit     Exit the SSH session
+quit     Exit the SSH session (alias for exit)
+free     Get current free heap memory
 esp32> free
 Current Free Memory: 234560 bytes
 esp32> wifi_info
 WiFi Mode: STA
 SSID: MyWiFi
 IP Address: 192.168.1.100
+esp32> session
+Session ID: 1
+Client: 192.168.1.50:54321
+User: esp32
+Auth method: password
+Client version: SSH-2.0-OpenSSH_8.9
+Connected: 12345 seconds since boot
+esp32> exit
+Connection to 192.168.1.100 closed.
 ```
+
+## Built-in Commands
+
+The SSH server includes several built-in commands in addition to all standard ESP-IDF console commands:
+
+### Session Management Commands
+
+- **`exit`** or **`quit`**: Gracefully closes the SSH session and returns to the client
+- **`session`**: Displays detailed information about the current SSH session including:
+  - Client IP address and port
+  - Authenticated username
+  - Authentication method used (password, publickey)
+  - SSH client version string
+  - Unique session ID
+  - Connection timestamp
+
+### Session Information Display
+
+When you first connect via SSH, the server automatically displays session information showing who connected from where and how they authenticated. This provides immediate visibility into the connection details for security and debugging purposes.
 
 ## Troubleshooting
 
