@@ -1,9 +1,17 @@
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
+
 #include "esp_err.h"
 
 typedef struct {
-
+    const char *client_ip;      // Client IP address (e.g., "192.168.1.100")
+    uint16_t client_port;       // Client port number
+    const char *username;       // Authenticated username
+    const char *client_version; // SSH client version string
+    const char *auth_method;    // Authentication method used ("password", "publickey", etc.)
+    uint32_t session_id;        // Unique session identifier
+    uint32_t connect_time;      // Connection timestamp (seconds since boot)
+    bool authenticated;         // Whether the session is authenticated
 } ssh_server_session_t;
 
 typedef void (*ssh_shell_func_t)(ssh_server_session_t *session, void *ctx);
@@ -13,7 +21,7 @@ typedef struct {
     const char *port;
     const char *debug_level;
     const char *username;
-    const char *host_key;  // SSH host private key (PEM format)
+    const char *host_key; // SSH host private key (PEM format)
 #if CONFIG_EXAMPLE_ALLOW_PASSWORD_AUTH
     const char *password;
 #endif

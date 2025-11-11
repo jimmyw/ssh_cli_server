@@ -1,16 +1,20 @@
 
 
+#include <arpa/inet.h>
 #include <ctype.h>
 #include <libssh/callbacks.h>
 #include <libssh/libssh.h>
 #include <libssh/server.h>
+#include <netinet/in.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_vfs.h"
 #include "esp_vfs_eventfd.h"
 
@@ -19,7 +23,6 @@
 #include "freertos/task.h"
 
 #include "ssh_server.h"
-
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
@@ -32,11 +35,11 @@
 #define VFS_FD_IS_READ(fd) (!((fd) & 1))
 #define CHANNEL_INDEX_TO_VFS_FD(ch_idx, is_write) (((ch_idx) << 1) | ((is_write) ? 1 : 0))
 
-
 static const char *TAG = "ssh_server";
 
 static esp_vfs_id_t s_pipe_vfs_id = -1;
-static int wakeup_eventfd = -1; // Event FD for waking up SSH event loop
+static int wakeup_eventfd = -1;                  // Event FD for waking up SSH event loop
+static const char *last_auth_method = "unknown"; // Track the last authentication method used
 
 typedef struct {
     esp_vfs_select_sem_t sem;
@@ -64,6 +67,60 @@ static ssh_vfs_context_t channels[MAX_SSH_CHANNELS];
 #define CHANNEL_INDEX_FROM_PTR(ctx) ((ctx) - channels)
 
 static void trigger_select_for_channel(int fd, bool read, bool write, bool except);
+
+/**
+ * @brief Populate session information from SSH session
+ */
+static void populate_session_info(ssh_server_session_t *session_info, ssh_session ssh_session, ssh_server_config_t *config)
+{
+    static uint32_t session_counter = 0;
+
+    // Initialize all fields to safe defaults
+    memset(session_info, 0, sizeof(ssh_server_session_t));
+
+    // Get client IP and port
+    socket_t sock = ssh_get_fd(ssh_session);
+    if (sock != SSH_INVALID_SOCKET) {
+        struct sockaddr_storage client_addr;
+        socklen_t addr_len = sizeof(client_addr);
+
+        if (getpeername(sock, (struct sockaddr *)&client_addr, &addr_len) == 0) {
+            if (client_addr.ss_family == AF_INET) {
+                struct sockaddr_in *addr_in = (struct sockaddr_in *)&client_addr;
+                // Store IP in a static buffer (note: this is not thread-safe for multiple sessions)
+                static char ip_buffer[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &addr_in->sin_addr, ip_buffer, sizeof(ip_buffer));
+                session_info->client_ip = ip_buffer;
+                session_info->client_port = ntohs(addr_in->sin_port);
+            }
+            // Note: IPv6 support could be added here if needed
+        }
+    }
+
+    // Set other session information
+    session_info->username = config->username; // The username they authenticated as
+    session_info->session_id = ++session_counter;
+    session_info->connect_time = esp_timer_get_time() / 1000000; // Convert microseconds to seconds
+    session_info->authenticated = true;                          // If we get to channel_open, they're authenticated
+
+    // Get client version if available
+    const char *client_banner = ssh_get_clientbanner(ssh_session);
+    if (client_banner) {
+        static char version_buffer[128];
+        strncpy(version_buffer, client_banner, sizeof(version_buffer) - 1);
+        version_buffer[sizeof(version_buffer) - 1] = '\0';
+        session_info->client_version = version_buffer;
+    } else {
+        session_info->client_version = "unknown";
+    }
+
+    // Set auth method - use the tracked method from authentication
+    session_info->auth_method = last_auth_method;
+
+    ESP_LOGI(TAG, "Session info populated - Client: %s:%u, User: %s, Auth: %s, Version: %s, ID: %u",
+             session_info->client_ip ? session_info->client_ip : "unknown", session_info->client_port, session_info->username, session_info->auth_method,
+             session_info->client_version, session_info->session_id);
+}
 
 // Call with NULL to find a free spot.
 static ssh_vfs_context_t *allocate_new_channel_context()
@@ -225,7 +282,6 @@ static int channel_data(ssh_session session, ssh_channel channel, void *data, ui
     (void)session;
     (void)is_stderr;
     (void)userdata;
-
 
     // Send data to message buffer (non-blocking), blocking time max
     size_t bytes_sent = xMessageBufferSend(ctx->read_buffer, data, len, portMAX_DELAY);
@@ -488,8 +544,6 @@ static ssize_t ssh_vfs_read(int fd, void *data, size_t size)
         return -1;
     }
 
-
-
     // Block until data is available (with timeout)
     size_t bytes_received = xMessageBufferReceive(channels[ch_idx].read_buffer, data, size,
                                                   portMAX_DELAY // 1 second timeout
@@ -684,18 +738,18 @@ static int ssh_vfs_fcntl(int fd, int cmd, int flags)
     ESP_LOGD(TAG, "ssh_vfs_fcntl called with fd=%d, cmd=%d, flags=%d", fd, cmd, flags);
 
     switch (cmd) {
-        case F_GETFL:
-            // Return the file access mode and status flags
-            return VFS_FD_IS_WRITE(fd) ? O_WRONLY : O_RDONLY;
+    case F_GETFL:
+        // Return the file access mode and status flags
+        return VFS_FD_IS_WRITE(fd) ? O_WRONLY : O_RDONLY;
 
-        case F_SETFL:
-            // We don't support changing flags (non-blocking, etc.)
-            // Just return success
-            return 0;
+    case F_SETFL:
+        // We don't support changing flags (non-blocking, etc.)
+        // Just return success
+        return 0;
 
-        default:
-            errno = EINVAL;
-            return -1;
+    default:
+        errno = EINVAL;
+        return -1;
     }
 }
 
@@ -744,7 +798,6 @@ static int auth_none(ssh_session session, const char *user, void *userdata)
     }
 #endif
 
-
     ssh_set_auth_methods(session, methods);
     return SSH_AUTH_DENIED;
 }
@@ -777,7 +830,8 @@ static int auth_password(ssh_session session, const char *user, const char *pass
 
     if (strcmp(user, config->username) == 0 && strcmp(password, config->password) == 0) {
         ESP_LOGD(TAG, "Authentication successful for user: %s", user);
-        tries = 0; // Reset tries on success
+        tries = 0;                     // Reset tries on success
+        last_auth_method = "password"; // Track successful auth method
         return SSH_AUTH_SUCCESS;
     }
 
@@ -911,6 +965,7 @@ static int auth_publickey(ssh_session session, const char *user, struct ssh_key_
 
             if (signature_state == SSH_PUBLICKEY_STATE_VALID) {
                 ESP_LOGI("DEBUG", "Public key authentication successful for user: %s", user);
+                last_auth_method = "publickey"; // Track successful auth method
                 return SSH_AUTH_SUCCESS;
             }
 
@@ -962,7 +1017,7 @@ static void vfs_channel_close(ssh_session session, ssh_channel channel, void *us
     }
 
     // Do we need to clean up SSH channel?
-    //if (ctx->channel) {
+    // if (ctx->channel) {
     //    ssh_channel_send_eof(ctx->channel);
     //    ssh_channel_close(ctx->channel);
     //    ssh_channel_free(ctx->channel);
@@ -972,8 +1027,6 @@ static void vfs_channel_close(ssh_session session, ssh_channel channel, void *us
     // Free the channel context
     memset(ctx, 0, sizeof(ssh_vfs_context_t));
 }
-
-
 
 /**
  * @brief SSH channel open callback
@@ -1009,6 +1062,9 @@ static ssh_channel channel_open(ssh_session session, void *userdata)
         ESP_LOGD(TAG, "Failed to create new channel");
         return NULL;
     }
+
+    // Populate session information for the shell function
+    populate_session_info(&ctx->session, session, config);
 
     // Create message buffer for this channel (4KB buffer)
     ctx->read_buffer = xMessageBufferCreate(READ_BUFFER_SIZE);
