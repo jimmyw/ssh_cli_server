@@ -1,7 +1,8 @@
 dependencies:
   david-cermak/libssh: "*"
-description: SSH CLI Server Component
+name: jimmyw/ssh_cli_server
+description: SSH CLI Server Component - Complete SSH server with integrated command-line interface for ESP32
 issues: https://github.com/jimmyw/ssh_cli_server/issues
 repository: git://github.com/jimmyw/ssh_cli_server.git
-url: https://github.com/jimmyw/ssh_cli_server/tree/master/led_strip
+url: https://github.com/jimmyw/ssh_cli_server
 version: 1.0.0
