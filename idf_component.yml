@@ -2,6 +2,7 @@ dependencies:
   david-cermak/libssh: "*"
 name: jimmyw/ssh_cli_server
 description: SSH CLI Server Component - Complete SSH server with integrated command-line interface for ESP32
+license: MIT
 issues: https://github.com/jimmyw/ssh_cli_server/issues
 repository: git://github.com/jimmyw/ssh_cli_server.git
 url: https://github.com/jimmyw/ssh_cli_server

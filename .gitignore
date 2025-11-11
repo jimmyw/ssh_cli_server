@@ -2,6 +2,7 @@
 .devcontainer/
 .vscode/
 build
+dist
 dependencies.lock
 managed_components
 sdkconfig
