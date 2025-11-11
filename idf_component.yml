@@ -1,2 +1,7 @@
 dependencies:
   david-cermak/libssh: "*"
+description: SSH CLI Server Component
+issues: https://github.com/jimmyw/ssh_cli_server/issues
+repository: git://github.com/jimmyw/ssh_cli_server.git
+url: https://github.com/jimmyw/ssh_cli_server/tree/master/led_strip
+version: 1.0.0
