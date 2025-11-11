@@ -1,0 +1,11 @@
+Checks: >
+  -*,
+  # bugprone-*,
+  performance-*,
+  # readability-*,
+  # modernize-*,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.strcpy,
+  -clang-analyzer-security.insecureAPI.strcat,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+HeaderFilterRegex: '^\./.*'

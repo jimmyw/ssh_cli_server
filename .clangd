@@ -1,0 +1,6 @@
+CompileFlags:
+  Remove: ['-fno-tree-switch-conversion', '-fstrict-volatile-bitfields', '-fno-shrink-wrap', '-mdisable-hardware-atomics']
+  Add: ['-D__GLIBC_USE(x)=0']
+Index:
+  StandardLibrary: Yes
+  Background: Build
