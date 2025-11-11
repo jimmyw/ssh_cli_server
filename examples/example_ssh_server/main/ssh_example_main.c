@@ -89,22 +89,17 @@ static void initialize_nvs(void)
     ESP_ERROR_CHECK(err);
 }
 
-static void run_linenoise_console(void * ctx) {
+static void run_linenoise_console(ssh_server_session_t *session, void * ctx) {
     const char* prompt = (const char*)ctx;
+    while (1) {
         /* Get a line using linenoise.
          * The line is returned when ENTER is pressed.
          */
         char* line = linenoise(prompt);
 
-#if CONFIG_CONSOLE_IGNORE_EMPTY_LINES
-        if (line == NULL) { /* Ignore empty lines */
-            return;
-        }
-#else
         if (line == NULL) { /* Break on EOF or error */
-            break;
+            continue;
         }
-#endif // CONFIG_CONSOLE_IGNORE_EMPTY_LINES
 
         /* Add the command to the history if not empty*/
         if (strlen(line) > 0) {
@@ -113,6 +108,11 @@ static void run_linenoise_console(void * ctx) {
             /* Save command history to filesystem */
             linenoiseHistorySave(HISTORY_PATH);
 #endif // CONFIG_CONSOLE_STORE_HISTORY
+        }
+
+        if (strcmp(line, "exit") == 0 || strcmp(line, "quit") == 0) {
+            linenoiseFree(line);
+            break;
         }
 
         /* Try to run the command */
@@ -133,6 +133,7 @@ static void run_linenoise_console(void * ctx) {
         }
         /* linenoise allocates line buffer on the heap, so need to free it */
         linenoiseFree(line);
+    }
 }
 
 int log_func(const char *__restrict __fmt, __gnuc_va_list __arg) {
@@ -240,9 +241,7 @@ void app_main(void)
     ssh_server_start(&server_config);
 
     /* Main loop */
-    while(true) {
-        run_linenoise_console((void *)prompt);
-    }
+    run_linenoise_console(NULL, (void *)prompt);
 
     ESP_LOGE(TAG, "Error or end-of-input, terminating console");
     esp_console_deinit();

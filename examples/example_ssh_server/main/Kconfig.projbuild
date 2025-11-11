@@ -8,14 +8,6 @@ menu "Example Configuration"
             command history. If this option is enabled, initializes a FAT filesystem
             and uses it to store command history.
 
-    config CONSOLE_IGNORE_EMPTY_LINES
-        bool "Ignore empty lines inserted into the console"
-        default y
-        help
-            If an empty line is inserted to the console, the Console can either
-            ignore empty lines (the example would continue), or break on empty lines
-            (the example would stop after an empty line).
-
     config EXAMPLE_DEFAULT_PORT
         string "SSH server port"
         default "22"

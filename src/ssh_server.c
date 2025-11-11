@@ -56,6 +56,7 @@ typedef struct {
     signal_context_t signals[MAX_SSH_SIGNALS];
     ssh_server_config_t *config;
     struct ssh_channel_callbacks_struct *channel_cb;
+    ssh_server_session_t session;
 } ssh_vfs_context_t;
 
 // Mapped to local fd
@@ -150,8 +151,8 @@ static void ssh_shell(void *arg)
     __getreent()->_stdin = new_stdin;
     __getreent()->_stdout = new_stdout;
 
-    while (ssh_channel_is_open(channel) && !ssh_channel_is_eof(channel)) {
-        ctx->config->shell_func(ctx->config->shell_func_ctx);
+    if (ssh_channel_is_open(channel) && !ssh_channel_is_eof(channel)) {
+        ctx->config->shell_func(&ctx->session, ctx->config->shell_func_ctx);
     }
 bail_out:
     __getreent()->_stdin = orig_stdin;
@@ -161,6 +162,7 @@ bail_out:
         fclose(new_stdin);
     if (new_stdout)
         fclose(new_stdout);
+    ctx->shell_task_handle = NULL;
     vTaskDelete(NULL);
 }
 
@@ -932,7 +934,7 @@ static void vfs_channel_close(ssh_session session, ssh_channel channel, void *us
     trigger_select_for_channel(ctx->stdout_fd, false, false, true);
 
     // Close the VFS fds
-    if (ctx->config->shell_task_kill_on_disconnect && ctx->shell_task_handle) {
+    if (ctx->config->shell_task_kill_on_disconnect && ctx->shell_task_handle && ctx->shell_task_handle != xTaskGetCurrentTaskHandle()) {
         vTaskDelete(ctx->shell_task_handle);
         ctx->shell_task_handle = NULL;
     }
@@ -1284,19 +1286,21 @@ static void ssh_server_internal(ssh_server_config_t *config)
     ssh_finalize();
 }
 
+static bool ssh_run_server = false;
+
 static void ssh_server(void *ctx)
 {
     ssh_server_config_t *config = (ssh_server_config_t *)ctx;
     // Run the SSH server indefinitely
-    while (1) {
+    while (ssh_run_server) {
         ssh_server_internal(config);
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
+    vTaskDelete(NULL);
 }
 
 esp_err_t ssh_server_start(ssh_server_config_t *config)
 {
-
     if (!config) {
         ESP_LOGE(TAG, "Invalid SSH server configuration");
         return ESP_ERR_INVALID_ARG;
@@ -1309,6 +1313,7 @@ esp_err_t ssh_server_start(ssh_server_config_t *config)
         ESP_LOGE(TAG, "No host key provided in configuration");
         return ESP_ERR_INVALID_ARG;
     }
+    ssh_run_server = true;
 
     ESP_LOGI(TAG, "Starting SSH server...");
     BaseType_t ret = xTaskCreate(&ssh_server, "ssh_server", 8192, (void *)config, 5, NULL);
@@ -1317,4 +1322,10 @@ esp_err_t ssh_server_start(ssh_server_config_t *config)
         return ESP_ERR_NO_MEM;
     }
     return ESP_OK;
+}
+
+void ssh_server_stop()
+{
+    ESP_LOGI(TAG, "Stopping SSH server...");
+    ssh_run_server = false;
 }

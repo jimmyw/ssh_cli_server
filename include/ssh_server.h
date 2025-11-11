@@ -2,7 +2,11 @@
 #include <stdbool.h>
 #include "esp_err.h"
 
-typedef void (*ssh_shell_func_t)(void *ctx);
+typedef struct {
+
+} ssh_server_session_t;
+
+typedef void (*ssh_shell_func_t)(ssh_server_session_t *session, void *ctx);
 
 typedef struct {
     const char *bindaddr;
@@ -23,3 +27,4 @@ typedef struct {
 } ssh_server_config_t;
 
 esp_err_t ssh_server_start(ssh_server_config_t *config);
+void ssh_server_stop();
